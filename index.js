@@ -1,29 +1,27 @@
-// server.js - Main application file
-require('dotenv').config();
 const express = require('express');
+const app = express();
 const cors = require('cors');
+require('dotenv').config();
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
-const app = express();
-const port = process.env.PORT || 3000;
 
-// Connect to MongoDB
+// Connect to MongoDB database
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/exercise-tracker', {
   useNewUrlParser: true,
   useUnifiedTopology: true
 });
 
-// Middleware
+// Basic Configuration
 app.use(cors());
 app.use(express.static('public'));
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-// Models
+// Create mongoose schemas
 const Schema = mongoose.Schema;
 
 const userSchema = new Schema({
-  username: { type: String, required: true, unique: true }
+  username: { type: String, required: true }
 });
 
 const exerciseSchema = new Schema({
@@ -36,7 +34,7 @@ const exerciseSchema = new Schema({
 const User = mongoose.model('User', userSchema);
 const Exercise = mongoose.model('Exercise', exerciseSchema);
 
-// Routes
+// Serve HTML
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/views/index.html');
 });
@@ -46,17 +44,6 @@ app.post('/api/users', async (req, res) => {
   const username = req.body.username;
   
   try {
-    // Check if the username already exists
-    const existingUser = await User.findOne({ username: username });
-    
-    if (existingUser) {
-      return res.json({
-        username: existingUser.username,
-        _id: existingUser._id
-      });
-    }
-    
-    // Create a new user
     const newUser = new User({ username: username });
     const savedUser = await newUser.save();
     
@@ -73,7 +60,7 @@ app.post('/api/users', async (req, res) => {
 // Get all users
 app.get('/api/users', async (req, res) => {
   try {
-    const users = await User.find({}, 'username _id');
+    const users = await User.find({});
     res.json(users);
   } catch (err) {
     console.error(err);
@@ -84,7 +71,7 @@ app.get('/api/users', async (req, res) => {
 // Add an exercise for a user
 app.post('/api/users/:_id/exercises', async (req, res) => {
   const userId = req.params._id;
-  const { description, duration, date } = req.body;
+  let { description, duration, date } = req.body;
   
   try {
     // Find the user
@@ -94,16 +81,27 @@ app.post('/api/users/:_id/exercises', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     
+    // Parse inputs
+    duration = parseInt(duration);
+    
+    // Handle date - if not provided, use current date
+    if (!date) {
+      date = new Date();
+    } else {
+      date = new Date(date);
+    }
+    
     // Create a new exercise
     const newExercise = new Exercise({
-      userId: userId,
-      description: description,
-      duration: parseInt(duration),
-      date: date ? new Date(date) : new Date()
+      userId,
+      description,
+      duration,
+      date
     });
     
     const savedExercise = await newExercise.save();
     
+    // Return formatted response
     res.json({
       _id: user._id,
       username: user.username,
@@ -146,7 +144,7 @@ app.get('/api/users/:_id/logs', async (req, res) => {
     }
     
     // Find exercises
-    let exerciseQuery = Exercise.find(dateFilter).sort({ date: 1 });
+    let exerciseQuery = Exercise.find(dateFilter);
     
     if (limit) {
       exerciseQuery = exerciseQuery.limit(parseInt(limit));
@@ -174,6 +172,9 @@ app.get('/api/users/:_id/logs', async (req, res) => {
 });
 
 // Start the server
-app.listen(port, () => {
-  console.log(`Exercise tracker app listening at http://localhost:${port}`);
+const listener = app.listen(process.env.PORT || 3000, () => {
+  console.log('Your app is listening on port ' + listener.address().port);
 });
+
+// Export app for testing
+module.exports = app;
